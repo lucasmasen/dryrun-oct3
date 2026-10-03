@@ -131,7 +131,7 @@ export default function LiveView({ taskId }: { taskId: string }) {
                   <>
                     <p className="text-2xl">🤖 Agent picked {picked.name}</p>
                     <p className="text-neutral-400">
-                      {rtc === 'reconnecting' ? 'Reconnecting video…' : rtc === 'error' ? 'Video connection failed: check Realtime is enabled' : `Waiting for ${picked.name} to start their camera…`}
+                      {rtc === 'ended' ? `${picked.name} finished the live video. Wrapping up…` : rtc === 'reconnecting' ? 'Reconnecting video…' : rtc === 'error' ? 'Video connection failed: check Realtime is enabled' : `Waiting for ${picked.name} to start their camera…`}
                     </p>
                   </>
                 )}

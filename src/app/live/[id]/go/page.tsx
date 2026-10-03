@@ -29,6 +29,7 @@ export default function GoLivePage() {
   const [error, setError] = useState<string | null>(null);
   const [rtc, setRtc] = useState<LiveState | null>(null);
   const [streaming, setStreaming] = useState(false);
+  const [finishing, setFinishing] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const preview = useRef<HTMLVideoElement>(null);
   const stream = useRef<MediaStream | null>(null);
@@ -100,6 +101,16 @@ export default function GoLivePage() {
     }
   }
 
+  // Volunteer ends the session: stop the camera, close the task, get paid
+  async function finish() {
+    if (!confirm('End the live video and finish the task?')) return;
+    setFinishing(true);
+    stopAll();
+    try { await fetch(`/api/tasks/${id}/close`, { method: 'POST' }); } catch {}
+    setFinishing(false);
+    refresh();
+  }
+
   const picked = Boolean(claimId && info?.assigned?.claim_id === claimId);
   const someoneElse = Boolean(info?.assigned && !picked);
   const regClosed = Boolean(info?.registration_closed_at);
@@ -146,10 +157,18 @@ export default function GoLivePage() {
           </p>
         </>
       ) : picked ? (
-        !streaming && (
+        streaming || finishing ? (
+          <button
+            onClick={finish}
+            disabled={finishing}
+            className="rounded-xl bg-white p-5 text-xl font-semibold text-black disabled:opacity-50"
+          >
+            {finishing ? 'Finishing…' : `✓ Done: end & get paid ${info ? money(info.budget_cents) : ''}`}
+          </button>
+        ) : (
           <>
             <p className="text-2xl font-semibold text-emerald-400">You were picked! 🎉</p>
-            <p className="text-neutral-300">Tap below to go live. Use your back camera, talk as you go, and keep it steady.</p>
+            <p className="text-neutral-300">Tap below to go live. Use your back camera, talk as you go, and keep it steady. Tap Done when you&apos;re finished.</p>
             <button onClick={goLive} className="rounded-xl bg-red-600 p-5 text-xl font-semibold">● Go live</button>
           </>
         )

@@ -64,3 +64,63 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- ===========================================================================
+-- delegate_to_human: tasks + responses
+-- Safe to re-run. All writes go through /api/tasks* with the service-role key.
+--
+-- Deliberate exception to the auth.uid() policy rule above: this flow has no
+-- users (the agent, phones and bots are anonymous), and the live board reads
+-- via realtime with the anon key. So these tables are PUBLIC READ-ONLY, with
+-- no insert/update/delete policies, which means the anon key cannot write.
+-- Don't put anything sensitive in them.
+-- ===========================================================================
+
+create extension if not exists pgcrypto;
+
+create table if not exists public.tasks (
+  id                uuid primary key default gen_random_uuid(),
+  prompt            text not null,
+  response_type     text not null check (response_type in ('text','choice','photo')),
+  options           jsonb,                      -- string[] for 'choice'
+  budget_cents      int  not null default 500,
+  min_responses     int  not null default 3,
+  status            text not null default 'open' check (status in ('open','closing','closed')),
+  payment_intent_id text,
+  result            jsonb,
+  closes_at         timestamptz not null default now() + interval '3 minutes',
+  created_at        timestamptz not null default now()
+);
+
+create table if not exists public.responses (
+  id            uuid primary key default gen_random_uuid(),
+  task_id       uuid not null references public.tasks(id) on delete cascade,
+  worker_name   text not null default 'anon',
+  content       text not null,
+  photo_url     text,
+  status        text not null default 'pending' check (status in ('pending','accepted','rejected')),
+  screen_reason text,
+  payout_cents  int not null default 0,
+  created_at    timestamptz not null default now()
+);
+create index if not exists responses_task_idx on public.responses (task_id, created_at);
+
+-- Realtime: the board subscribes to both tables
+alter table public.tasks     replica identity full;
+alter table public.responses replica identity full;
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'tasks') then
+    alter publication supabase_realtime add table public.tasks;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'responses') then
+    alter publication supabase_realtime add table public.responses;
+  end if;
+end $$;
+
+alter table public.tasks     enable row level security;
+alter table public.responses enable row level security;
+drop policy if exists "public read tasks"     on public.tasks;
+drop policy if exists "public read responses" on public.responses;
+create policy "public read tasks"     on public.tasks     for select using (true);
+create policy "public read responses" on public.responses for select using (true);

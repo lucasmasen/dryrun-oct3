@@ -7,7 +7,7 @@ The board and the phone page handle all of them: choice questions get vote bars,
 
 ## Scenario 1: Local taste (choice → vote bars). THE MAIN DEMO
 > I'm in San Francisco this weekend with 3 friends. Plan my Sunday: morning, afternoon, evening.
-> Plan everything you can yourself. But for brunch, I want a real local's opinion, not an internet guess. You can't know that yourself, so use the delegate_to_human tool. Ask one short choice question between 3 brunch spots you'd pick, with a budget of 500 cents.
+> Plan everything you can yourself. But for brunch, I want a real local's opinion, not an internet guess. You can't know that yourself, so use the delegate_to_human tool. Ask one short choice question between 3 brunch spots you'd pick, with a budget of 500 cents. Start the question with "Weekend planner:" so the humans know which agent is asking.
 > When the humans answer, tell me how many verified humans responded and which spot won. Then finish the plan: "Got it, booking ___ based on that."
 
 **The point:** agents can plan, but they can't know what real people think.

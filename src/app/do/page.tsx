@@ -16,6 +16,11 @@ type Answered = Record<string, number>; // taskId -> cents
 function load<T>(key: string, fallback: T): T {
   try { const v = localStorage.getItem(key); return v ? (JSON.parse(v) as T) : fallback; } catch { return fallback; }
 }
+function deviceId(): string {
+  let id = load<string>('device', '');
+  if (!id) { id = crypto.randomUUID(); save('device', id); }
+  return id;
+}
 function save(key: string, v: unknown) {
   try { localStorage.setItem(key, JSON.stringify(v)); } catch {}
 }
@@ -56,10 +61,15 @@ export default function DoPage() {
     const res = await fetch(`/api/tasks/${current.id}/responses`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ answer, name: name.trim() || 'anon' }),
+      body: JSON.stringify({ answer, name: name.trim() || 'anon', device_id: deviceId() }),
     });
     const body = await res.json().catch(() => ({}));
     setSending(false);
+    if (res.status === 409 && /already/i.test(body.error ?? '')) {
+      const next = { ...answered, [current.id]: answered[current.id] ?? 0 };
+      setAnswered(next); save('answered', next);
+      return setError('You already answered this one. One answer per person.');
+    }
     if (!res.ok) return setError(body.error ?? 'Something went wrong, try again');
     const next = { ...answered, [current.id]: body.accepted === false ? 0 : perHuman(current) };
     setAnswered(next); save('answered', next);

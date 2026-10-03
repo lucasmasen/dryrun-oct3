@@ -8,6 +8,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const body = await req.json().catch(() => ({}));
   const answer: string = (body.answer ?? body.content ?? '').toString().trim();
   const name: string = (body.name ?? body.worker_name ?? '').toString().trim();
+  const deviceId: string | null = body.device_id ? String(body.device_id).slice(0, 64) : null;
   if (!answer) return json({ ok: false, error: 'answer required' }, 400);
 
   const { data: task } = await db.from('tasks').select('*').eq('id', id).maybeSingle();
@@ -25,7 +26,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     worker_name: name.slice(0, 40) || 'anon',
     content,
     photo_url: body.photo_url ?? null,
+    ...(deviceId ? { device_id: deviceId } : {}),
   }).select().single();
+  // One answer per device per task (unique index on task_id, device_id)
+  if (error?.code === '23505') return json({ ok: false, error: 'You already answered this task' }, 409);
   if (error) return json({ ok: false, error: error.message }, 400);
 
   const verdict = await screenResponse(task as Task, content);

@@ -15,6 +15,7 @@ export const dynamic = 'force-dynamic';
 
 const WINDOW_S = Number(process.env.LIVE_CLAIM_WINDOW_SECONDS || 15);
 const NOT_PICKED = 'standby: another volunteer was picked';
+const CLAIM = 'Volunteered for live video'; // must match closeLive in lib/delegate/close.ts
 
 type Claim = { id: string; worker_name: string; status: string; created_at: string };
 
@@ -22,7 +23,7 @@ async function load(id: string) {
   const { data: task } = await db.from('tasks').select('*').eq('id', id).maybeSingle();
   if (!task) return null;
   const { data } = await db.from('responses')
-    .select('id, worker_name, status, created_at').eq('task_id', id).order('created_at');
+    .select('id, worker_name, status, created_at').eq('task_id', id).eq('content', CLAIM).order('created_at');
   return { task: task as Task, claims: (data ?? []) as Claim[] };
 }
 
@@ -90,7 +91,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       const { data: row, error } = await db.from('responses').insert({
         task_id: id,
         worker_name: String(body.name ?? '').trim().slice(0, 40) || 'anon',
-        content: 'Volunteered for live video',
+        content: CLAIM,
         status: s.task.assigned_response_id ? 'rejected' : 'accepted',
         screen_reason: s.task.assigned_response_id ? NOT_PICKED : 'volunteer',
         ...(deviceId ? { device_id: deviceId } : {}),

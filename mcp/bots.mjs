@@ -11,7 +11,7 @@ console.log("Bots watching", BASE_URL);
 while (true) {
   try {
     const tasks = await (await fetch(`${BASE_URL}/api/tasks`)).json();
-    for (const t of tasks.filter((t) => t.status === "open" && !answered.has(t.id))) {
+    for (const t of tasks.filter((t) => t.status === "open" && t.response_type !== "live" && !answered.has(t.id))) {
       answered.add(t.id);
       console.log("Answering task", t.id, "-", t.prompt);
       (async () => {

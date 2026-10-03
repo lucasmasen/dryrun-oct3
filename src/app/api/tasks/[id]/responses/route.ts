@@ -18,6 +18,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { data: task } = await db.from('tasks').select('*').eq('id', id).maybeSingle();
   if (!task) return json({ ok: false, error: 'task not found' }, 404);
   if (task.status !== 'open') return json({ ok: false, error: 'task closed' }, 409);
+  if (task.response_type === 'live') return json({ ok: false, error: 'live video task: volunteer at /live/' + id + '/go' }, 409);
   if (task.response_type === 'photo' && !photoUrl) return json({ ok: false, error: 'photo required' }, 400);
 
   // Normalize choice answers to the exact option string

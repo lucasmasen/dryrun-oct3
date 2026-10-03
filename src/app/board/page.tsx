@@ -64,7 +64,7 @@ export default function BoardPage() {
   const open = task?.status === 'open';
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-white">
+    <main className="min-h-svh bg-neutral-950 text-stone-100">
       <header className="flex flex-wrap items-center justify-between gap-4 border-b border-neutral-800 px-6 py-4 lg:px-10">
         <div className="flex items-center gap-3">
           <span className="font-mono text-lg text-emerald-400">delegate_to_human()</span>
@@ -82,11 +82,11 @@ export default function BoardPage() {
         )}
       </header>
 
-      <div className="grid gap-8 px-6 py-8 lg:grid-cols-[1fr_300px] lg:px-10">
+      <div className="mx-auto grid max-w-[1800px] gap-10 px-6 py-10 lg:grid-cols-[minmax(0,1fr)_300px] lg:px-12">
         <section className="flex min-w-0 flex-col gap-8">
           <div>
             <p className="mb-2 text-sm uppercase tracking-widest text-neutral-500">An AI agent asked humans</p>
-            <h1 className="text-4xl font-bold leading-tight lg:text-5xl">
+            <h1 className="max-w-[24ch] text-4xl font-semibold leading-tight tracking-tight text-balance lg:text-6xl">
               {task?.prompt ?? 'Waiting for an agent to delegate a task…'}
             </h1>
           </div>

@@ -79,7 +79,7 @@ export default function DoPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col gap-5 bg-neutral-950 p-5 text-white">
+    <main className="mx-auto flex min-h-svh max-w-md flex-col gap-6 bg-neutral-950 px-5 py-7 text-stone-100 [&_button]:transition-colors [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-4 [&_button]:focus-visible:outline-white [&_input]:focus-visible:outline-2 [&_input]:focus-visible:outline-white [&_textarea]:focus-visible:outline-2 [&_textarea]:focus-visible:outline-white">
       {/* Your payout progress */}
       <section className="rounded-2xl bg-neutral-900 p-4">
         <div className="flex items-baseline justify-between">
@@ -110,7 +110,7 @@ export default function DoPage() {
                   <button
                     disabled={done}
                     onClick={() => { setOpenId(t.id); setError(null); }}
-                    className="w-full rounded-2xl bg-neutral-900 p-4 text-left active:scale-[0.98] disabled:opacity-50"
+                    className="w-full rounded-2xl border border-neutral-800 bg-neutral-900 p-5 text-left hover:bg-neutral-800 active:scale-[0.98] disabled:opacity-50"
                   >
                     <p className="line-clamp-2 text-lg font-semibold leading-snug">{t.prompt}</p>
                     <div className="mt-2 flex gap-3 text-sm">
@@ -141,7 +141,7 @@ export default function DoPage() {
           <p className="text-sm uppercase tracking-widest text-emerald-400">
             An AI agent needs a human · {money(perHuman(current))} · {minutes(current)}
           </p>
-          <h1 className="text-3xl font-bold leading-tight">{current.prompt}</h1>
+          <h1 className="text-3xl font-semibold leading-tight tracking-tight text-balance">{current.prompt}</h1>
           <div>
             <Bar value={Math.min(current.responses_count, NEEDED)} max={NEEDED} tone="bg-sky-400" />
             <p className="mt-1 text-xs text-neutral-500">

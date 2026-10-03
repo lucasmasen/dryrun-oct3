@@ -2,7 +2,7 @@
 
 // Big-screen board: current task, answers streaming in, verification, payout.
 // Realtime for instant updates, plus a 1.5s poll so it never goes stale.
-// Shows the newest OPEN task; if none is open, the most recent one.
+// Shows the newest task, so a finished result stays up until the next task.
 import { useCallback, useEffect, useState } from 'react';
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js';
 import type { TaskView } from '@/lib/delegate/types';
@@ -23,7 +23,7 @@ export default function BoardPage() {
       if (id) t = await fetch(`/api/tasks/${id}`, { cache: 'no-store' }).then(r => r.json());
       else {
         const all: TaskView[] = await fetch('/api/tasks', { cache: 'no-store' }).then(r => r.json());
-        t = all.find(x => x.status !== 'closed') ?? all[0];
+        t = all[0];
       }
       if (!t?.id) return;
       setTask(t);

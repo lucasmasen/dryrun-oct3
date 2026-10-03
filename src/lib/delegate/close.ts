@@ -36,7 +36,7 @@ export async function closeTask(taskId: string): Promise<{ task: Task; result: T
   }
 
   const accepted = all.filter(r => r.status === 'accepted');
-  const { summary, winner, tally } = await aggregate(task, accepted.map(r => r.content));
+  const { summary, winner, tally } = await aggregate(task, accepted.map(r => r.photo_url ? `${r.content} [photo proof attached, AI-verified: ${r.screen_reason ?? 'ok'}]` : r.content));
 
   const each = accepted.length ? Math.floor(task.budget_cents / accepted.length) : 0;
   const total = each * accepted.length;

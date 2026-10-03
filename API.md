@@ -234,3 +234,31 @@ BASE=https://<our-app>.vercel.app bash scripts/smoke.sh
 ```
 
 It runs create, 4 submits (one of them an injection attempt), get, a timed close, and a final get. The expected result is Zazie as the winner at 2/3, 1 rejected, and $4.98 captured in the Stripe test dashboard.
+
+## Single-worker action tasks (Stripe test demo)
+
+Action tasks use `/api/action-tasks`, separate from judgment/voting tasks above.
+Apply `supabase/action-tasks.sql` to an existing database before using these routes.
+New database setup also includes these definitions in `supabase/schema.sql`.
+
+- `POST /api/action-tasks`: `{ "prompt": "...", "proof_type": "text" | "photo", "proof_instructions": "...", "purchase_allowance_cents": 0, "worker_reward_cents": 0 }`.
+- `GET /api/action-tasks`: list action tasks. `GET /api/action-tasks/:id`: current task, funding, proof, result.
+- `POST /api/action-tasks/:id/claim`: `{ "device_id": "..." }`; returns a private `claim_token` and task. Save the token locally; it is required for proof submission.
+- `POST /api/action-tasks/:id/proof`: multipart form with `claim_token` and either `text` or `photo`, matching the task's proof modality.
+
+Nonzero allowance + reward requires hosted Stripe Checkout authorization before
+workers can claim. Only Stripe test keys are accepted; use `4242 4242 4242 4242`
+with a future expiry and any three-digit CVC. Funding confirmation retrieves the
+stored Checkout session from Stripe; a browser redirect alone never funds a task.
+Accepted proof captures the authorized test amount and completes the task.
+This does not buy an item, advance money, reimburse a worker, or transfer a payout.
+
+Proof verification requires `ANTHROPIC_API_KEY`; missing configuration, malformed
+output, and provider errors never count as accepted proof. Photos are limited to
+4 MB JPEG/PNG/WebP and stored in the private `action-proofs` bucket. The anonymous
+demo API exposes task/evidence views with expiring photo links; do not submit
+sensitive evidence. Device IDs and hashed claim credentials stay private.
+
+Worker surface: `/do`. Task monitoring: `/board`. Requester return: `/funding/:id`.
+MCP action calls must set `task_kind: "action"`; after funding, call
+`get_human_result` with the returned `task_id` and `task_kind: "action"`.

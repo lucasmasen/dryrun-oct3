@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js';
 import type { TaskView } from '@/lib/delegate/types';
+import ActionBoard from '@/components/action/action-board';
 
 type Row = { answer: string; name: string; status: 'pending' | 'accepted' | 'rejected'; reason: string | null; created_at: string };
 
@@ -218,6 +219,7 @@ export default function BoardPage() {
           <p className="text-center text-sm text-neutral-500">Get paid for verified answers</p>
         </aside>
       </div>
+      <ActionBoard />
       <style>{`@keyframes fadeIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}`}</style>
     </main>
   );

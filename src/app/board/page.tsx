@@ -92,6 +92,20 @@ export default function BoardPage() {
           </div>
 
           {task && (
+            <div>
+              <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-800">
+                <div
+                  className="h-full rounded-full bg-sky-400 transition-all duration-700"
+                  style={{ width: `${result ? 100 : Math.min(100, (accepted.length / 3) * 100)}%` }}
+                />
+              </div>
+              <p className="mt-2 text-sm text-neutral-400">
+                {result ? 'Agent has its answer and is continuing its task' : `Agent is paused, waiting on humans · ${Math.min(accepted.length, 3)}/3 verified`}
+              </p>
+            </div>
+          )}
+
+          {task && (
             <div className="grid grid-cols-3 gap-3 text-center">
               <Stat label="Responses" value={rows.length} />
               <Stat label="Verified" value={accepted.length} tone="text-emerald-400" />

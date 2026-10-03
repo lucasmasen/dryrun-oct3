@@ -76,7 +76,7 @@ export default function BoardPage() {
               {open ? '● Open: humans answering' : task.status === 'closing' ? 'Verifying…' : '✓ Complete: returned to agent'}
             </span>
             <span className="rounded-full bg-amber-500/15 px-3 py-1 font-semibold text-amber-300">
-              {money(task.budget_cents)} {result ? 'paid out' : 'in escrow'}
+              {result ? `${money(result.paid.total_cents)} paid out` : `${money(task.budget_cents)} in escrow`}
             </span>
           </div>
         )}

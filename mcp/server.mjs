@@ -34,6 +34,14 @@ async function api(method, path, body) {
   }
 }
 
+async function countVerified(taskId, task) {
+  try {
+    const rows = await api("GET", `/api/tasks/${taskId}/responses`);
+    if (Array.isArray(rows)) return rows.filter((r) => r.status === "accepted").length;
+  } catch {}
+  return task.responses_count ?? 0; // backends without the responses list (e.g. the mock)
+}
+
 // Poll until enough humans answered or time runs out, then close (screen + aggregate + pay).
 async function waitAndClose(taskId) {
   const deadline = Date.now() + WAIT_SECONDS * 1000;
@@ -41,13 +49,13 @@ async function waitAndClose(taskId) {
   while (Date.now() < deadline) {
     task = await api("GET", `/api/tasks/${taskId}`);
     if (task.status === "closed") return task.result ?? task;
-    const n = task.responses_count ?? task.responses?.length ?? 0;
-    log(`task ${taskId}: ${n}/${TARGET_RESPONSES} responses`);
-    if (n >= TARGET_RESPONSES) break;
+    // Count only answers that passed screening; rejected ones don't fill the quota.
+    task.verified = await countVerified(taskId, task);
+    log(`task ${taskId}: ${task.verified}/${TARGET_RESPONSES} verified`);
+    if (task.verified >= TARGET_RESPONSES) break;
     await sleep(POLL_MS);
   }
-  const n = task?.responses_count ?? task?.responses?.length ?? 0;
-  if (n === 0) return null;
+  if (!task?.verified) return null;
   const closed = await api("POST", `/api/tasks/${taskId}/close`);
   return closed.result ?? closed;
 }

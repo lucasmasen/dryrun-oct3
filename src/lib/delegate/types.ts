@@ -82,7 +82,8 @@ export interface LiveView {
   budget_cents: number;
   claims: { id: string; name: string; created_at: string }[];
   claim_window_seconds: number;
-  selects_at: string | null;          // when auto-select happens (null until first volunteer)
+  registration_closed_at: string | null; // when the requester closed registration
+  selects_at: string | null;          // when the agent picks (registration close + delay), else null
   assigned: { claim_id: string; name: string } | null;
   live_started_at: string | null;
   result: TaskResult | null;

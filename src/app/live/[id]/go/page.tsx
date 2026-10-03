@@ -102,6 +102,7 @@ export default function GoLivePage() {
 
   const picked = Boolean(claimId && info?.assigned?.claim_id === claimId);
   const someoneElse = Boolean(info?.assigned && !picked);
+  const regClosed = Boolean(info?.registration_closed_at);
   const secsToPick = info?.selects_at ? Math.max(0, Math.ceil((new Date(info.selects_at).getTime() - now) / 1000)) : null;
 
   return (
@@ -133,11 +134,15 @@ export default function GoLivePage() {
             value={name}
             onChange={e => setName(e.target.value)}
           />
-          <button onClick={volunteer} disabled={someoneElse} className="rounded-xl bg-emerald-500 p-5 text-xl font-semibold text-black disabled:opacity-50">
+          <button onClick={volunteer} disabled={someoneElse || regClosed} className="rounded-xl bg-emerald-500 p-5 text-xl font-semibold text-black disabled:opacity-50">
             I can do this
           </button>
           <p className="text-sm text-neutral-500">
-            {someoneElse ? 'Someone has already been picked for this one.' : "If several people volunteer, one is picked at random. You&apos;ll need your camera."}
+            {someoneElse
+              ? 'Someone has already been picked for this one.'
+              : regClosed
+                ? 'Registration is closed for this one.'
+                : "When the requester closes registration, the agent picks one volunteer at random. You'll need your camera."}
           </p>
         </>
       ) : picked ? (
@@ -156,7 +161,8 @@ export default function GoLivePage() {
         <div className="rounded-2xl bg-neutral-900 p-5">
           <p className="text-xl font-semibold">You&apos;re in ✓</p>
           <p className="text-neutral-400">
-            {info?.claims.length ?? 1} volunteer{info?.claims.length === 1 ? '' : 's'} so far · picking in {secsToPick ?? '…'}s
+            {info?.claims.length ?? 1} volunteer{info?.claims.length === 1 ? '' : 's'} so far ·{' '}
+            {regClosed ? `🤖 agent picking in ${secsToPick ?? 0}s` : 'waiting for the requester to close registration'}
           </p>
         </div>
       )}

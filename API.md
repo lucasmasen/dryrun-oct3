@@ -276,9 +276,9 @@ One human goes live on their phone camera, for example "Show me around the SF St
 | Create | `POST /api/tasks` `{ "prompt": "...", "response_type": "live", "budget_cents": 2000 }` | Escrow is held as usual. The TTL defaults to 30 min. |
 | Watch | open `/live/:id` (or `/board` when it's the newest task) | Shows the QR code, the volunteers, the auto-select countdown, the live video, and End & pay. |
 | Volunteer | phone opens `/live/:id/go`, or taps the task in `/do` | `POST /api/tasks/:id/live { "action": "claim", "name", "device_id" }` |
-| Auto-select | automatic **30s after the first volunteer** (`LIVE_CLAIM_WINDOW_SECONDS`, default 30), or the requester picks someone | `POST /api/tasks/:id/live { "action": "assign", "claim_id": "<volunteer>" }` picks that person; without `claim_id` the pick is random. It is atomic: the first pick wins. Everyone else is set to `rejected` with the reason "standby". |
+| Agent pick | the requester closes registration with `POST /api/tasks/:id/live { "action": "close_registration" }` (needs at least one volunteer; new volunteers are then refused). **5s later** (`LIVE_PICK_DELAY_SECONDS`) one volunteer is picked at random. There is no automatic pick before registration closes. | `{ "action": "assign", "claim_id"? }` still picks immediately (that person, or random). It is atomic: the first pick wins. Everyone else is set to `rejected` with the reason "standby". |
 | Go live | the picked phone taps "Go live" | Uses the back camera and mic. It reports `{ "action": "started", "claim_id" }`, which starts the paid timer. |
-| State | `GET /api/tasks/:id/live` | Returns `{ claims, selects_at, assigned: { claim_id, name }, live_started_at, result }` |
+| State | `GET /api/tasks/:id/live` | Returns `{ claims, registration_closed_at, selects_at, assigned: { claim_id, name }, live_started_at, result }`. `selects_at` is when the agent picks (null until registration closes) |
 | End & pay | `POST /api/tasks/:id/close` | Captures the full budget for the streamer. If nobody went live, the escrow is refunded. |
 
 Result returned to the agent:

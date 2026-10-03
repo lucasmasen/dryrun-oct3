@@ -59,6 +59,7 @@ export default function LiveView({ taskId }: { taskId: string }) {
   const joinUrl = `${origin}/live/${taskId}/go`;
   const claims = info?.claims ?? [];
   const picked = info?.assigned;
+  const regClosed = Boolean(info?.registration_closed_at);
   const secsToPick = info?.selects_at ? Math.max(0, Math.ceil((new Date(info.selects_at).getTime() - now) / 1000)) : null;
   const liveFor = info?.live_started_at ? Math.max(0, Math.floor((now - new Date(info.live_started_at).getTime()) / 1000)) : 0;
   const result = info?.result;
@@ -119,12 +120,16 @@ export default function LiveView({ taskId }: { taskId: string }) {
                 {!picked && claims.length > 0 && (
                   <>
                     <p className="text-2xl">{claims.length} human{claims.length === 1 ? '' : 's'} volunteered</p>
-                    <p className="text-neutral-400">Choose one on the right, or one is picked at random in {secsToPick ?? 0}s</p>
+                    <p className="text-neutral-400">
+                      {regClosed
+                        ? `Registration closed · 🤖 Agent picking one at random in ${secsToPick ?? 0}s`
+                        : 'Close registration when you have enough volunteers'}
+                    </p>
                   </>
                 )}
                 {picked && (
                   <>
-                    <p className="text-2xl">{picked.name} was picked 🎉</p>
+                    <p className="text-2xl">🤖 Agent picked {picked.name}</p>
                     <p className="text-neutral-400">
                       {rtc === 'reconnecting' ? 'Reconnecting video…' : rtc === 'error' ? 'Video connection failed: check Realtime is enabled' : `Waiting for ${picked.name} to start their camera…`}
                     </p>
@@ -153,7 +158,7 @@ export default function LiveView({ taskId }: { taskId: string }) {
         </section>
 
         <aside className="flex flex-col gap-5">
-          {!picked && !closed && origin && (
+          {!picked && !closed && !regClosed && origin && (
             <div className="flex flex-col items-center gap-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
@@ -173,24 +178,17 @@ export default function LiveView({ taskId }: { taskId: string }) {
               {claims.map(c => (
                 <li key={c.id} className={`flex items-center justify-between rounded-lg px-3 py-2 ${c.id === picked?.claim_id ? 'bg-emerald-500/15 text-emerald-300' : 'bg-neutral-800'}`}>
                   <span className="truncate">{c.name}</span>
-                  {!picked && !closed ? (
-                    <button
-                      disabled={busy}
-                      onClick={() => act(`/api/tasks/${taskId}/live`, { action: 'assign', claim_id: c.id })}
-                      className="rounded-md bg-white px-3 py-1 text-sm font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
-                    >
-                      Pick
-                    </button>
-                  ) : (
-                    <span className="text-sm">{c.id === picked?.claim_id ? '★ picked' : 'standby'}</span>
-                  )}
+                  <span className="text-sm">{c.id === picked?.claim_id ? '★ picked' : picked ? 'standby' : 'ready'}</span>
                 </li>
               ))}
             </ul>
-            {!picked && !closed && claims.length > 0 && (
-              <button disabled={busy} onClick={() => act(`/api/tasks/${taskId}/live`, { action: 'assign' })} className="mt-3 w-full rounded-lg border border-neutral-700 py-2 font-semibold text-neutral-300 hover:bg-neutral-800 disabled:opacity-50">
-                🎲 Pick at random
+            {!picked && !closed && claims.length > 0 && !regClosed && (
+              <button disabled={busy} onClick={() => act(`/api/tasks/${taskId}/live`, { action: 'close_registration' })} className="mt-3 w-full rounded-lg bg-white py-3 font-semibold text-black hover:bg-neutral-200 disabled:opacity-50">
+                Close registration ({claims.length})
               </button>
+            )}
+            {!picked && !closed && regClosed && (
+              <p className="mt-3 text-center text-neutral-400">🤖 Agent picking in {secsToPick ?? 0}s…</p>
             )}
           </div>
         </aside>

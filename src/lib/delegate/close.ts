@@ -71,7 +71,8 @@ const clock = (sec: number) => `${Math.floor(sec / 60)}m ${String(sec % 60).padS
 /** Live video: the one picked human gets the whole budget. Returns who streamed and for how long. */
 async function closeLive(task: Task): Promise<{ task: Task; result: TaskResult }> {
   const { data: rows } = await db.from('responses').select('*').eq('task_id', task.id).order('created_at');
-  const all = (rows ?? []) as TaskResponse[];
+  // Only real volunteers (claims from /live), never stray answers from bots or the regular endpoint
+  const all = ((rows ?? []) as TaskResponse[]).filter(r => r.content === 'Volunteered for live video');
   const picked = all.find(r => r.id === task.assigned_response_id) ?? null;
   const secs = task.live_started_at ? Math.max(0, Math.round((Date.now() - new Date(task.live_started_at).getTime()) / 1000)) : 0;
   const streamed = Boolean(picked && task.live_started_at);
@@ -88,8 +89,7 @@ async function closeLive(task: Task): Promise<{ task: Task; result: TaskResult }
   if (picked) {
     await db.from('responses').update({
       payout_cents: total,
-      content: streamed ? `Streamed live for ${clock(secs)}` : 'Picked, but never went live',
-      screen_reason: streamed ? 'live stream completed' : 'no stream: not paid',
+      screen_reason: streamed ? `streamed live for ${clock(secs)}` : 'picked, never went live: not paid',
       status: streamed ? 'accepted' : 'rejected',
     }).eq('id', picked.id);
   }

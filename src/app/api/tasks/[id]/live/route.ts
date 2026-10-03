@@ -6,14 +6,15 @@ import type { LiveView, Task, TaskResult } from '@/lib/delegate/types';
  *
  *   GET  /api/tasks/:id/live                         -> LiveView (also runs auto-select when the window is up)
  *   POST /api/tasks/:id/live { action: 'claim', name, device_id }   volunteer for the task
- *   POST /api/tasks/:id/live { action: 'assign' }                   pick a volunteer now
+ *   POST /api/tasks/:id/live { action: 'assign', claim_id? }        pick that volunteer (or random if no claim_id)
  *   POST /api/tasks/:id/live { action: 'started', claim_id }        picked phone reports camera is live
  *
  * Ending + paying is the normal POST /api/tasks/:id/close (see closeLive in lib/delegate/close.ts).
  */
 export const dynamic = 'force-dynamic';
 
-const WINDOW_S = Number(process.env.LIVE_CLAIM_WINDOW_SECONDS || 15);
+// Requester has this long after the first volunteer to choose; then one is auto-picked at random
+const WINDOW_S = Number(process.env.LIVE_CLAIM_WINDOW_SECONDS || 30);
 const NOT_PICKED = 'standby: another volunteer was picked';
 const CLAIM = 'Volunteered for live video'; // must match closeLive in lib/delegate/close.ts
 
@@ -27,11 +28,11 @@ async function load(id: string) {
   return { task: task as Task, claims: (data ?? []) as Claim[] };
 }
 
-/** Pick one volunteer at random. Atomic: only the first caller wins. */
-async function assign(id: string, claims: Claim[]) {
+/** Pick a volunteer: the one the requester chose, else at random. Atomic: only the first caller wins. */
+async function assign(id: string, claims: Claim[], chosenId?: string) {
   const pool = claims.filter(c => c.status === 'accepted');
   if (!pool.length) return false;
-  const pick = pool[Math.floor(Math.random() * pool.length)];
+  const pick = pool.find(c => c.id === chosenId) ?? pool[Math.floor(Math.random() * pool.length)];
   const { data: won } = await db.from('tasks').update({ assigned_response_id: pick.id })
     .eq('id', id).eq('status', 'open').is('assigned_response_id', null).select('id').maybeSingle();
   if (!won) return false;
@@ -108,7 +109,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
     case 'assign': {
       if (s.task.status !== 'open') return json({ ok: false, error: 'task closed' }, 409);
-      if (!s.task.assigned_response_id) await assign(id, s.claims);
+      // { action: 'assign', claim_id } picks that volunteer; without claim_id, picks at random
+      if (!s.task.assigned_response_id) await assign(id, s.claims, body.claim_id ? String(body.claim_id) : undefined);
       const after = (await load(id))!;
       return json(view(after.task, after.claims));
     }

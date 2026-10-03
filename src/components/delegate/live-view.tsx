@@ -119,7 +119,7 @@ export default function LiveView({ taskId }: { taskId: string }) {
                 {!picked && claims.length > 0 && (
                   <>
                     <p className="text-2xl">{claims.length} human{claims.length === 1 ? '' : 's'} volunteered</p>
-                    <p className="text-neutral-400">Auto-selecting one in {secsToPick ?? 0}s</p>
+                    <p className="text-neutral-400">Choose one on the right, or one is picked at random in {secsToPick ?? 0}s</p>
                   </>
                 )}
                 {picked && (
@@ -173,13 +173,23 @@ export default function LiveView({ taskId }: { taskId: string }) {
               {claims.map(c => (
                 <li key={c.id} className={`flex items-center justify-between rounded-lg px-3 py-2 ${c.id === picked?.claim_id ? 'bg-emerald-500/15 text-emerald-300' : 'bg-neutral-800'}`}>
                   <span className="truncate">{c.name}</span>
-                  <span className="text-sm">{c.id === picked?.claim_id ? '★ picked' : picked ? 'standby' : ''}</span>
+                  {!picked && !closed ? (
+                    <button
+                      disabled={busy}
+                      onClick={() => act(`/api/tasks/${taskId}/live`, { action: 'assign', claim_id: c.id })}
+                      className="rounded-md bg-white px-3 py-1 text-sm font-semibold text-black hover:bg-neutral-200 disabled:opacity-50"
+                    >
+                      Pick
+                    </button>
+                  ) : (
+                    <span className="text-sm">{c.id === picked?.claim_id ? '★ picked' : 'standby'}</span>
+                  )}
                 </li>
               ))}
             </ul>
             {!picked && !closed && claims.length > 0 && (
-              <button disabled={busy} onClick={() => act(`/api/tasks/${taskId}/live`, { action: 'assign' })} className="mt-3 w-full rounded-lg bg-emerald-500 py-2 font-semibold text-black disabled:opacity-50">
-                Pick now
+              <button disabled={busy} onClick={() => act(`/api/tasks/${taskId}/live`, { action: 'assign' })} className="mt-3 w-full rounded-lg border border-neutral-700 py-2 font-semibold text-neutral-300 hover:bg-neutral-800 disabled:opacity-50">
+                🎲 Pick at random
               </button>
             )}
           </div>

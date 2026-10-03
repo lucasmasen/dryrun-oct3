@@ -8,7 +8,8 @@
     "mock": "node mock-backend.mjs",
     "bots": "node bots.mjs",
     "start": "node server.mjs",
-    "agents": "node agents.mjs"
+    "agents": "node agents.mjs",
+    "reset": "node reset.mjs"
   },
   "keywords": [],
   "author": "",

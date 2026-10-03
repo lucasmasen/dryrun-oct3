@@ -1,6 +1,11 @@
 // Launch several AI agents at once, each delegating through the real MCP tool.
 // Shows the marketplace filling with tasks that no human wrote.
 // Run: BASE_URL=https://dryrun-oct3-oct2.vercel.app npm run agents
+//
+// TO ADD OR CHANGE QUESTIONS: copy one { name, args } block below and edit it.
+//   response_type "choice" -> needs options, shows vote bars
+//   response_type "text"   -> typed answers, AI-verified (trick answers get 🚫)
+//   budget_cents           -> total pay, split across 3 humans
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { fileURLToPath } from "node:url";
@@ -13,6 +18,14 @@ const AGENTS = [
   {
     name: "Ops agent",
     args: { task: "Look around this room: what's one thing the organizers should fix right now?", response_type: "text", budget_cents: 300 },
+  },
+  {
+    name: "Real estate agent",
+    args: { task: "Would you pay $2,400/month for a studio in SF's Mission District?", response_type: "choice", options: ["Yes, worth it", "Only under $2,000", "No way"], budget_cents: 300 },
+  },
+  {
+    name: "Design agent",
+    args: { task: "Which app icon color feels most trustworthy for a payments app?", response_type: "choice", options: ["Navy blue", "Forest green", "Black"], budget_cents: 300 },
   },
 ];
 

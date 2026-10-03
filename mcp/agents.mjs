@@ -3,6 +3,7 @@
 // Run: BASE_URL=https://dryrun-oct3-oct2.vercel.app npm run agents
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { fileURLToPath } from "node:url";
 
 const AGENTS = [
   {
@@ -18,7 +19,7 @@ const AGENTS = [
 await Promise.all(AGENTS.map(async ({ name, args }, i) => {
   await new Promise((r) => setTimeout(r, i * 1500));
   const client = new Client({ name, version: "1.0.0" });
-  await client.connect(new StdioClientTransport({ command: "node", args: [new URL("./server.mjs", import.meta.url).pathname], env: { ...process.env, WAIT_SECONDS: process.env.WAIT_SECONDS || "120" }, stderr: "ignore" }));
+  await client.connect(new StdioClientTransport({ command: "node", args: [fileURLToPath(new URL("./server.mjs", import.meta.url))], env: { ...process.env, WAIT_SECONDS: process.env.WAIT_SECONDS || "120" }, stderr: "ignore" }));
   console.log(`[${name}] delegate_to_human → "${args.task}"`);
   const r = await client.callTool({ name: "delegate_to_human", arguments: args }, undefined, { timeout: 300000 });
   const out = JSON.parse(r.content[0].text);

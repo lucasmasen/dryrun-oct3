@@ -12,7 +12,7 @@
 // same anon key (read-only, from /api/realtime). Broadcast needs no table access.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-// Replaced by /api/realtime's list (adds a TURN relay when configured).
+// STUN by default; /api/realtime adds a TURN relay when one is configured.
 let ICE: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
 
 export type LiveState = 'connecting' | 'waiting' | 'live' | 'reconnecting' | 'ended' | 'error';
@@ -39,7 +39,7 @@ function supabase(): Promise<SupabaseClient> {
 }
 
 async function channel(taskId: string, onSignal: (s: Signal) => void) {
-  const sb = await supabase();
+  const sb = await supabase(); // also loads ICE (incl. TURN) before any peer connection
   const ch = sb.channel(`live:${taskId}`, { config: { broadcast: { self: false } } });
   ch.on('broadcast', { event: 'signal' }, ({ payload }) => onSignal(payload as Signal));
   await new Promise<void>((resolve, reject) => {
@@ -55,7 +55,7 @@ async function channel(taskId: string, onSignal: (s: Signal) => void) {
   };
 }
 
-function gathered(pc: RTCPeerConnection, ms = 3000) {
+function gathered(pc: RTCPeerConnection, ms = 5000) {
   if (pc.iceGatheringState === 'complete') return Promise.resolve();
   return new Promise<void>(resolve => {
     const t = setTimeout(resolve, ms);
@@ -119,7 +119,7 @@ export async function startStreamer(taskId: string, stream: MediaStream, onState
     if (s.kind === 'viewer-ready') {
       const st = pc?.connectionState;
       if (st === 'connected' || st === 'connecting') return;           // already serving a viewer
-      if (last.viewer === s.viewer && Date.now() - last.at < 8000) return; // handshake in flight
+      if (last.viewer === s.viewer && Date.now() - last.at < 15000) return; // handshake in flight (two 5s ICE gathers)
       last = { viewer: s.viewer, at: Date.now() };
       pc?.close();
       const mine = new RTCPeerConnection({ iceServers: ICE });

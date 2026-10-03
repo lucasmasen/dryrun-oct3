@@ -13,6 +13,17 @@ const perHuman = (t: TaskView) => Math.floor(t.budget_cents / NEEDED);
 
 type Answered = Record<string, number>; // taskId -> cents
 
+// Shrink a camera photo to a ~100KB JPEG data URL so it fits in the request.
+async function compress(file: File, max = 1000): Promise<string> {
+  const img = await createImageBitmap(file);
+  const scale = Math.min(1, max / Math.max(img.width, img.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.7);
+}
+
 function load<T>(key: string, fallback: T): T {
   try { const v = localStorage.getItem(key); return v ? (JSON.parse(v) as T) : fallback; } catch { return fallback; }
 }
@@ -31,6 +42,7 @@ export default function DoPage() {
   const [answered, setAnswered] = useState<Answered>({});
   const [name, setName] = useState('');
   const [text, setText] = useState('');
+  const [photo, setPhoto] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,13 +67,17 @@ export default function DoPage() {
   const todo = live.filter(t => !(t.id in answered)).length;
 
   async function submit(answer: string) {
-    if (!current || !answer.trim()) return;
+    if (!current) return;
+    const isPhoto = current.response_type === 'photo';
+    if (isPhoto && !photo) return setError('Add a photo first');
+    if (!isPhoto && !answer.trim()) return;
+    answer = answer.trim() || 'Photo proof';
     setSending(true); setError(null);
     save('name', name);
     const res = await fetch(`/api/tasks/${current.id}/responses`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ answer, name: name.trim() || 'anon', device_id: deviceId() }),
+      body: JSON.stringify({ answer, name: name.trim() || 'anon', device_id: deviceId(), ...(photo ? { photo_url: photo } : {}) }),
     });
     const body = await res.json().catch(() => ({}));
     setSending(false);
@@ -73,7 +89,7 @@ export default function DoPage() {
     if (!res.ok) return setError(body.error ?? 'Something went wrong, try again');
     const next = { ...answered, [current.id]: body.accepted === false ? 0 : perHuman(current) };
     setAnswered(next); save('answered', next);
-    setText('');
+    setText(''); setPhoto(null);
     if (body.accepted === false) setError(`Not accepted: ${body.reason ?? 'failed verification'}`);
     else setOpenId(null);
   }
@@ -109,14 +125,14 @@ export default function DoPage() {
                 <li key={t.id}>
                   <button
                     disabled={done}
-                    onClick={() => { setOpenId(t.id); setError(null); }}
+                    onClick={() => { setOpenId(t.id); setError(null); setPhoto(null); }}
                     className="w-full rounded-2xl border border-neutral-800 bg-neutral-900 p-5 text-left hover:bg-neutral-800 active:scale-[0.98] disabled:opacity-50"
                   >
                     <p className="line-clamp-2 text-lg font-semibold leading-snug">{t.prompt}</p>
                     <div className="mt-2 flex gap-3 text-sm">
                       <span className="font-semibold text-emerald-400">{money(perHuman(t))}</span>
                       <span className="text-neutral-400">{minutes(t)}</span>
-                      <span className="text-neutral-500">{t.response_type === 'choice' ? 'Pick one' : 'Short answer'}</span>
+                      <span className="text-neutral-500">{t.response_type === 'choice' ? 'Pick one' : t.response_type === 'photo' ? '📷 Photo proof' : 'Short answer'}</span>
                       {done && <span className="ml-auto text-emerald-400">✓ Done</span>}
                     </div>
                     <Bar value={n} max={NEEDED} tone="bg-sky-400" />
@@ -174,14 +190,36 @@ export default function DoPage() {
                 </div>
               ) : (
                 <div className="flex flex-col gap-3">
+                  <label className={`flex cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-xl border-2 border-dashed p-4 text-lg ${
+                    current.response_type === 'photo' ? 'border-emerald-500 text-emerald-300' : 'border-neutral-700 text-neutral-400'
+                  }`}>
+                    {photo ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={photo} alt="Your photo" className="max-h-64 rounded-lg object-contain" />
+                    ) : (
+                      <span>📷 {current.response_type === 'photo' ? 'Take or upload a photo (required)' : 'Add a photo (optional)'}</span>
+                    )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      onChange={async e => {
+                        const f = e.target.files?.[0];
+                        if (!f) return;
+                        try { setPhoto(await compress(f)); setError(null); } catch { setError('Could not read that photo, try another'); }
+                      }}
+                    />
+                  </label>
+                  {photo && <button onClick={() => setPhoto(null)} className="self-start text-sm text-neutral-400">Remove photo</button>}
                   <textarea
-                    className="min-h-32 rounded-xl bg-neutral-800 p-4 text-lg outline-none"
-                    placeholder="Your answer"
+                    className="min-h-24 rounded-xl bg-neutral-800 p-4 text-lg outline-none"
+                    placeholder={current.response_type === 'photo' ? 'Add a note (e.g. "Left at front door, 3:05pm")' : 'Your answer'}
                     value={text}
                     onChange={e => setText(e.target.value)}
                   />
                   <button
-                    disabled={sending || !text.trim()}
+                    disabled={sending || (current.response_type === 'photo' ? !photo : !text.trim())}
                     onClick={() => submit(text)}
                     className="rounded-xl bg-emerald-500 p-5 text-xl font-semibold text-black disabled:opacity-50"
                   >

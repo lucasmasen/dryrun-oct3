@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js';
 import type { TaskView } from '@/lib/delegate/types';
 
-type Row = { answer: string; name: string; status: 'pending' | 'accepted' | 'rejected'; reason: string | null; created_at: string };
+type Row = { answer: string; name: string; status: 'pending' | 'accepted' | 'rejected'; reason: string | null; photo?: string | null; created_at: string };
 
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
@@ -190,11 +190,15 @@ export default function BoardPage() {
                 >
                   <span className="text-2xl">{r.status === 'accepted' ? '✅' : r.status === 'rejected' ? '🚫' : '⏳'}</span>
                   <div className="min-w-0">
+                    {r.photo && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={r.photo} alt="Photo proof" className={`mb-2 max-h-48 rounded-lg object-cover ${r.status === 'rejected' ? 'opacity-40' : ''}`} />
+                    )}
                     <p className={`break-words text-xl ${r.status === 'rejected' ? 'text-neutral-500 line-through' : ''}`}>{r.answer}</p>
                     <p className="text-sm text-neutral-400">
                       {r.name}
                       {r.status === 'pending' && ' · AI verifying…'}
-                      {r.status === 'accepted' && ' · verified'}
+                      {r.status === 'accepted' && (r.photo && r.reason ? ` · AI verified: ${r.reason}` : ' · verified')}
                       {r.status === 'rejected' && ` · rejected${r.reason ? `: ${r.reason}` : ''}`}
                     </p>
                   </div>

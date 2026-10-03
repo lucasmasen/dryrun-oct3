@@ -56,7 +56,7 @@ export async function closeTask(taskId: string): Promise<{ task: Task; result: T
     summary,
     winner,
     tally,
-    responses: accepted.map(r => ({ answer: r.content, name: r.worker_name })),
+    responses: accepted.map(r => ({ answer: r.content, name: r.worker_name, ...(r.photo_url ? { photo_verified: r.screen_reason ?? true } : {}) })),
     rejected: all.filter(r => r.status === 'rejected').length,
     paid: { total_cents: total, per_human_cents: each, stripe: task.payment_intent_id },
   };

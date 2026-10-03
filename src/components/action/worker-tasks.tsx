@@ -8,6 +8,25 @@ import ActionWorker from './action-worker';
 
 const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
+// Keep camera uploads small enough for the existing photo verification endpoint.
+async function compressPhoto(file: File): Promise<string> {
+  const image = await createImageBitmap(file);
+  try {
+    const scale = Math.min(1, 1000 / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(image.width * scale);
+    canvas.height = Math.round(image.height * scale);
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Could not read that photo, try another.');
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    const photo = canvas.toDataURL('image/jpeg', 0.7);
+    if (photo.length > 2_000_000) throw new Error('Photo is too large, try another.');
+    return photo;
+  } finally {
+    image.close();
+  }
+}
+
 function load<T>(key: string, fallback: T): T {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; } catch { return fallback; }
 }
@@ -78,7 +97,7 @@ export default function WorkerTasks({ initialTaskId }: { initialTaskId: string |
   }, []);
 
   return (
-    <main className="mx-auto min-h-svh max-w-lg space-y-7 bg-black px-5 py-8 text-white [&_button]:min-h-12 [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-4 [&_button]:focus-visible:outline-white [&_input]:focus-visible:outline-2 [&_input]:focus-visible:outline-white [&_textarea]:focus-visible:outline-2 [&_textarea]:focus-visible:outline-white">
+    <main className="mx-auto min-h-svh max-w-lg space-y-7 bg-black px-5 py-8 text-white [&_button]:min-h-12 [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-offset-4 [&_button]:focus-visible:outline-white [&_a]:focus-visible:outline-2 [&_a]:focus-visible:outline-offset-4 [&_a]:focus-visible:outline-white [&_input]:focus-visible:outline-2 [&_input]:focus-visible:outline-white [&_textarea]:focus-visible:outline-2 [&_textarea]:focus-visible:outline-white">
       <header className="space-y-2">
         <p className="font-mono text-xs uppercase tracking-widest text-neutral-400">Human tasks</p>
         <h1 className="text-3xl font-semibold tracking-tight">Help an agent.</h1>
@@ -120,10 +139,17 @@ export default function WorkerTasks({ initialTaskId }: { initialTaskId: string |
             <ul className="space-y-3">
               {judgments.filter(task => task.status === 'open').map(task => (
                 <li key={task.id}>
-                  <button type="button" onClick={() => setSelected({ kind: 'judgment', id: task.id })} className="w-full rounded-lg border border-neutral-700 p-4 text-left hover:bg-neutral-900">
-                    <span className="block text-lg font-medium">{task.prompt}</span>
-                    <span className="mt-2 block text-sm text-neutral-400">{task.response_type} · {task.responses_count} responses received · Budget {money(task.budget_cents)}</span>
-                  </button>
+                  {task.response_type === 'live' ? (
+                    <a href={`/live/${encodeURIComponent(task.id)}/go`} className="block min-h-12 w-full rounded-lg border border-neutral-700 p-4 text-left hover:bg-neutral-900">
+                      <span className="block text-lg font-medium">{task.prompt}</span>
+                      <span className="mt-2 block text-sm text-neutral-400">Live video · 1 human · Budget {money(task.budget_cents)}</span>
+                    </a>
+                  ) : (
+                    <button type="button" onClick={() => setSelected({ kind: 'judgment', id: task.id })} className="w-full rounded-lg border border-neutral-700 p-4 text-left hover:bg-neutral-900">
+                      <span className="block text-lg font-medium">{task.prompt}</span>
+                      <span className="mt-2 block text-sm text-neutral-400">{task.response_type} · {task.responses_count} responses received · Budget {money(task.budget_cents)}</span>
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -138,6 +164,8 @@ export default function WorkerTasks({ initialTaskId }: { initialTaskId: string |
 function JudgmentWorker({ task }: { task: TaskView | null }) {
   const [name, setName] = useState('');
   const [text, setText] = useState('');
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [readingPhoto, setReadingPhoto] = useState(false);
   const [sending, setSending] = useState(false);
   const [answered, setAnswered] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -155,13 +183,15 @@ function JudgmentWorker({ task }: { task: TaskView | null }) {
   }, [taskId]);
 
   async function submit(answer: string) {
-    if (!task || busy.current || answered || task.status !== 'open') return;
+    if (!task || busy.current || readingPhoto || answered || task.status !== 'open' || task.response_type === 'live') return;
     const value = answer.trim();
-    if (task.response_type === 'choice' ? !task.options?.includes(answer) : value.length < 3 || value.length > 1000) {
+    if (task.response_type === 'photo') {
+      if (!photo) return setMessage('Add a photo first.');
+      if (value.length > 1000) return setMessage('Keep your note under 1000 characters.');
+    } else if (task.response_type === 'choice' ? !task.options?.includes(answer) : value.length < 3 || value.length > 1000) {
       setMessage('Choose an option or enter 3–1000 characters.');
       return;
     }
-    if (task.response_type === 'photo') return;
     busy.current = true;
     setSending(true);
     setMessage(null);
@@ -169,7 +199,7 @@ function JudgmentWorker({ task }: { task: TaskView | null }) {
     try {
       const response = await fetch(`/api/tasks/${encodeURIComponent(task.id)}/responses`, {
         method: 'POST', headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ answer: task.response_type === 'choice' ? answer : value, name: name.trim() || 'anon', device_id: deviceId() }),
+        body: JSON.stringify({ answer: task.response_type === 'choice' ? answer : value || 'Photo proof', name: name.trim() || 'anon', device_id: deviceId(), ...(photo ? { photo_url: photo } : {}) }),
       });
       const body = await response.json().catch(() => ({}));
       if (response.status === 409 && /already/i.test(body.error ?? '')) {
@@ -187,6 +217,8 @@ function JudgmentWorker({ task }: { task: TaskView | null }) {
       save('answered', { ...(previous && typeof previous === 'object' ? previous : {}), [task.id]: 0 });
       if (active.current) {
         setAnswered(true);
+        setText('');
+        setPhoto(null);
         setMessage(body.accepted ? 'Response received.' : `Not accepted: ${body.reason}`);
       }
     } catch (error) {
@@ -205,20 +237,55 @@ function JudgmentWorker({ task }: { task: TaskView | null }) {
       <p className="text-sm text-neutral-400">{task.responses_count} responses received · Budget {money(task.budget_cents)}</p>
       {task.status !== 'open' && <p>Task is no longer accepting responses.</p>}
       {answered && !message && <p>Already responded on this device.</p>}
-      {task.status === 'open' && !answered && task.response_type !== 'photo' && (
+      {task.status === 'open' && task.response_type === 'live' && (
+        <a href={`/live/${encodeURIComponent(task.id)}/go`} className="block min-h-12 rounded-md bg-white p-4 text-center font-medium text-black">Volunteer for live video</a>
+      )}
+      {task.status === 'open' && !answered && task.response_type !== 'live' && (
         <>
           <label className="block space-y-2"><span>First name (optional)</span><input value={name} maxLength={40} onChange={event => setName(event.target.value)} disabled={sending} className="min-h-12 w-full rounded-md border border-neutral-700 bg-neutral-900 p-3 text-base" /></label>
           {task.response_type === 'choice' ? (
             task.options?.length ? <div className="space-y-3">{task.options.map((option, index) => <button key={`${index}:${option}`} type="button" disabled={sending} onClick={() => void submit(option)} className="w-full rounded-md bg-white p-4 text-left text-lg text-black disabled:opacity-50">{option}</button>)}</div> : <p>Task options unavailable.</p>
           ) : (
             <form className="space-y-3" onSubmit={event => { event.preventDefault(); void submit(text); }}>
-              <label className="block space-y-2"><span>Your answer</span><textarea value={text} onChange={event => setText(event.target.value)} minLength={3} maxLength={1000} disabled={sending} className="min-h-32 w-full rounded-md border border-neutral-700 bg-neutral-900 p-3 text-base" /></label>
-              <button type="submit" disabled={sending || text.trim().length < 3} className="w-full rounded-md bg-white p-4 font-medium text-black disabled:opacity-50">{sending ? 'Sending…' : 'Send response'}</button>
+              <label className="block space-y-2">
+                <span>{task.response_type === 'photo' ? 'Take or upload a photo (required)' : 'Add a photo (optional)'}</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  disabled={sending || readingPhoto}
+                  className="min-h-12 w-full rounded-md border border-neutral-700 bg-neutral-900 p-3 text-base"
+                  onChange={async event => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (!file) return;
+                    setReadingPhoto(true);
+                    setMessage(null);
+                    try {
+                      const next = await compressPhoto(file);
+                      if (active.current) setPhoto(next);
+                    } catch (error) {
+                      if (active.current) setMessage(error instanceof Error ? error.message : 'Could not read that photo, try another.');
+                    } finally {
+                      if (active.current) setReadingPhoto(false);
+                    }
+                  }}
+                />
+              </label>
+              {readingPhoto && <p role="status">Preparing photo…</p>}
+              {photo && (
+                <div className="space-y-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photo} alt="Your photo ready for verification" className="max-h-64 w-full rounded-md object-contain" />
+                  <button type="button" disabled={sending || readingPhoto} onClick={() => setPhoto(null)} className="text-sm text-neutral-400">Remove photo</button>
+                </div>
+              )}
+              <label className="block space-y-2"><span>{task.response_type === 'photo' ? 'Add a note (optional)' : 'Your answer'}</span><textarea value={text} onChange={event => setText(event.target.value)} minLength={task.response_type === 'photo' ? undefined : 3} maxLength={1000} disabled={sending} className="min-h-32 w-full rounded-md border border-neutral-700 bg-neutral-900 p-3 text-base" /></label>
+              <button type="submit" disabled={sending || readingPhoto || (task.response_type === 'photo' ? !photo : text.trim().length < 3)} className="w-full rounded-md bg-white p-4 font-medium text-black disabled:opacity-50">{sending ? 'Sending…' : 'Send response'}</button>
             </form>
           )}
         </>
       )}
-      {task.response_type === 'photo' && <p>Photo judgment responses are not supported here.</p>}
       {sending && <p role="status">Sending for verification…</p>}
       {message && <p role="status">{message}</p>}
     </article>

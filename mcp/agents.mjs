@@ -5,6 +5,7 @@
 // TO ADD OR CHANGE QUESTIONS: copy one { name, args } block below and edit it.
 //   response_type "choice" -> needs options, shows vote bars
 //   response_type "text"   -> typed answers, AI-verified (trick answers get 🚫)
+//   response_type "photo"  -> photo proof from the phone camera, AI checks the image
 //   budget_cents           -> total pay, split across 3 humans
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -18,6 +19,10 @@ const AGENTS = [
   {
     name: "Ops agent",
     args: { task: "Look around this room: what's one thing the organizers should fix right now?", response_type: "text", budget_cents: 300 },
+  },
+  {
+    name: "Errand agent",
+    args: { task: "Delivery check: you just dropped off a package. Take a photo of the front door (any door near you works) as proof of drop-off.", response_type: "photo", budget_cents: 600 },
   },
   {
     name: "Real estate agent",

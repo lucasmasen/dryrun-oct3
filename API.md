@@ -262,3 +262,34 @@ sensitive evidence. Device IDs and hashed claim credentials stay private.
 Worker surface: `/do`. Task monitoring: `/board`. Requester return: `/funding/:id`.
 MCP action calls must set `task_kind: "action"`; after funding, call
 `get_human_result` with the returned `task_id` and `task_kind: "action"`.
+
+---
+
+## Live video tasks (`response_type: "live"`)
+
+One human goes live on their phone camera, for example "Show me around the SF State campus". Volunteers scan a QR code, one is picked at random, and that person streams live to the requester. Ending the session pays the **full budget to that one person**.
+
+**Setup (once):** run `supabase/live.sql` in the Supabase SQL editor. Realtime must be enabled on the project, because it carries the video handshake.
+
+| Step | Call | Notes |
+|------|------|-------|
+| Create | `POST /api/tasks` `{ "prompt": "...", "response_type": "live", "budget_cents": 2000 }` | Escrow is held as usual. The TTL defaults to 30 min. |
+| Watch | open `/live/:id` (or `/board` when it's the newest task) | Shows the QR code, the volunteers, the auto-select countdown, the live video, and End & pay. |
+| Volunteer | phone opens `/live/:id/go`, or taps the task in `/do` | `POST /api/tasks/:id/live { "action": "claim", "name", "device_id" }` |
+| Auto-select | automatic **15s after the first volunteer** (`LIVE_CLAIM_WINDOW_SECONDS`), or the "Pick now" button | `POST /api/tasks/:id/live { "action": "assign" }`. The pick is random and atomic. Everyone else is set to `rejected` with the reason "standby". |
+| Go live | the picked phone taps "Go live" | Uses the back camera and mic. It reports `{ "action": "started", "claim_id" }`, which starts the paid timer. |
+| State | `GET /api/tasks/:id/live` | Returns `{ claims, selects_at, assigned: { claim_id, name }, live_started_at, result }` |
+| End & pay | `POST /api/tasks/:id/close` | Captures the full budget for the streamer. If nobody went live, the escrow is refunded. |
+
+Result returned to the agent:
+```json
+{ "summary": "Maya completed the live video task: streamed for 4m 12s (picked from 3 volunteers).",
+  "winner": "Maya", "responses": [{ "answer": "Streamed live for 4m 12s", "name": "Maya" }],
+  "rejected": 2, "paid": { "total_cents": 2000, "per_human_cents": 2000, "stripe": "pi_..." } }
+```
+
+**MCP:** `delegate_to_human` with `response_type: "live"` returns immediately with `watch_url` and `volunteer_url`. The agent calls `get_human_result` after the session ends, and it never auto-closes a live task.
+
+**How the video works:** the phone streams straight to the viewer over WebRTC (peer to peer), using Supabase Realtime broadcast on channel `live:<taskId>` for the handshake and Google's public STUN servers. Put the phones and laptop on the **same Wi-Fi** for the demo. Across mobile carriers, some networks need a TURN relay, which isn't set up.
+
+**Test without cameras:** `BASE=<url> bash scripts/live-smoke.sh`

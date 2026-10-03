@@ -121,13 +121,15 @@ async function waitAndClose(taskId) {
   while (Date.now() < deadline) {
     task = await api("GET", `/api/tasks/${encodeURIComponent(taskId)}`);
     if (task.status === "closed") return task.result ?? task;
+    // Live video is ended by the requester ("End & pay"), never auto-closed by the agent
+    if (task.response_type === "live") { await sleep(POLL_MS); continue; }
     // Count only answers that passed screening; rejected ones don't fill the quota.
     task.verified = await countVerified(taskId, task);
     log(`task ${taskId}: ${task.verified}/${TARGET_RESPONSES} verified`);
     if (task.verified >= TARGET_RESPONSES) break;
     await sleep(POLL_MS);
   }
-  if (!task?.verified) return null;
+  if (task?.response_type === "live" || !task?.verified) return null;
   const closed = await api("POST", `/api/tasks/${encodeURIComponent(taskId)}/close`);
   return closed.result ?? closed;
 }
@@ -141,6 +143,9 @@ server.registerTool(
   {
     description:
       "Delegate human judgment or a real-world action. Judgment tasks collect screened responses and return an aggregate. " +
+      "Use judgment tasks for local opinions, taste, physical-world checks, or a live camera walkthrough of a real place. " +
+      "Humans answer on their phones; non-live judgment responses are screened by AI, aggregated, and humans are paid from escrow. " +
+      "Keep non-live judgment tasks short and answerable in under 30 seconds. Live tasks return watch and volunteer links immediately and are ended by the requester, never auto-closed by the agent. " +
       "For actions, set task_kind to action and provide proof_type, proof_instructions, purchase_allowance_cents, and worker_reward_cents. " +
       "Action creation returns a Stripe TEST checkout link immediately when funding is needed, or a worker link for zero-cost tasks. " +
       "Present checkout to the user; never pay or open it automatically. Afterwards call get_human_result with task_kind action. " +
@@ -152,7 +157,7 @@ server.registerTool(
       proof_instructions: z.string().optional().describe("Required for actions: evidence the worker must provide"),
       purchase_allowance_cents: z.number().int().nonnegative().max(100000).default(0).describe("Action purchase allowance in USD cents; no advance or reimbursement"),
       worker_reward_cents: z.number().int().nonnegative().max(100000).default(0).describe("Action reward in USD cents; test funding only, no worker payout"),
-      response_type: z.enum(["text", "choice", "photo"]).default("text"),
+      response_type: z.enum(["text", "choice", "photo", "live"]).default("text").describe("Use 'live' when you need a human to show you something in real time on their camera (a place, an object, a line). One human is picked and streams live."),
       options: z.array(z.string()).optional().describe("Choices, required when response_type is 'choice'"),
       budget_cents: z.number().int().positive().default(500).describe("Total escrow for this task, in cents"),
     },
@@ -171,6 +176,16 @@ server.registerTool(
       const created = await api("POST", "/api/tasks", { prompt: task, response_type, options, budget_cents });
       const id = created.id ?? created.task?.id;
       log("created task", id);
+      if (response_type === "live") {
+        // Live video runs for minutes: hand back the links now, result later via get_human_result.
+        return asText({
+          status: "live",
+          task_id: id,
+          watch_url: `${BASE_URL}/live/${id}`,
+          volunteer_url: `${BASE_URL}/live/${id}/go`,
+          note: "A human will be picked from volunteers and stream live. Share watch_url with the user. When they end the session, call get_human_result with this task_id for who streamed, for how long, and the payout.",
+        });
+      }
       const result = await waitAndClose(id);
       if (!result) return asText({ status: "pending", task_id: id, note: "No humans have answered yet. Call get_human_result with this task_id." });
       return asText({ status: "completed", task_id: id, ...result });
@@ -187,7 +202,7 @@ server.registerTool(
 server.registerTool(
   "get_human_result",
   {
-    description: "Check a delegated task again. Defaults to judgment response aggregation. Set task_kind to action after presenting checkout or a worker link; actions poll verified completion for up to 40 seconds without closing a task or counting votes.",
+    description: "Check a delegated task again. Defaults to judgment response aggregation or live session results; live tasks are never auto-closed. Set task_kind to action after presenting checkout or a worker link; actions poll verified completion for up to 40 seconds without closing a task or counting votes.",
     inputSchema: { task_id: z.string().min(1), task_kind: z.enum(["judgment", "action"]).default("judgment") },
   },
   async ({ task_id, task_kind }) => {

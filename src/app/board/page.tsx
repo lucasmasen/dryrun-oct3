@@ -7,8 +7,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js';
 import type { TaskView } from '@/lib/delegate/types';
 import ActionBoard from '@/components/action/action-board';
+import LiveView from '@/components/delegate/live-view';
 
-type Row = { answer: string; name: string; status: 'pending' | 'accepted' | 'rejected'; reason: string | null; created_at: string };
+type Row = { answer: string; name: string; status: 'pending' | 'accepted' | 'rejected'; reason: string | null; photo?: string | null; created_at: string };
 
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
@@ -70,7 +71,7 @@ export default function BoardPage() {
   // Presenter control: end the task now with whatever is verified.
   // The agent's MCP tool sees status=closed on its next poll and continues.
   const closeNow = useCallback(async () => {
-    if (!task || task.status !== 'open' || closing) return;
+    if (!task || task.status !== 'open' || task.response_type === 'live' || closing) return;
     setClosing(true);
     try { await fetch(`/api/tasks/${task.id}/close`, { method: 'POST' }); } catch {}
     setClosing(false);
@@ -82,6 +83,8 @@ export default function BoardPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [closeNow]);
+
+  if (task?.response_type === 'live') return <><LiveView taskId={task.id} /><ActionBoard /></>;
 
   return (
     <main className="min-h-svh bg-neutral-950 text-stone-100">
@@ -191,11 +194,15 @@ export default function BoardPage() {
                 >
                   <span className="text-2xl">{r.status === 'accepted' ? '✅' : r.status === 'rejected' ? '🚫' : '⏳'}</span>
                   <div className="min-w-0">
+                    {r.photo && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={r.photo} alt="Photo proof" className={`mb-2 max-h-48 rounded-lg object-cover ${r.status === 'rejected' ? 'opacity-40' : ''}`} />
+                    )}
                     <p className={`break-words text-xl ${r.status === 'rejected' ? 'text-neutral-500 line-through' : ''}`}>{r.answer}</p>
                     <p className="text-sm text-neutral-400">
                       {r.name}
                       {r.status === 'pending' && ' · AI verifying…'}
-                      {r.status === 'accepted' && ' · verified'}
+                      {r.status === 'accepted' && (r.photo && r.reason ? ` · AI verified: ${r.reason}` : ' · verified')}
                       {r.status === 'rejected' && ` · rejected${r.reason ? `: ${r.reason}` : ''}`}
                     </p>
                   </div>

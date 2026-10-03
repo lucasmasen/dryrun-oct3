@@ -72,7 +72,7 @@ const TaskResultSchema: z.ZodType<TaskResult> = z.object({
 const TaskViewSchema = z.object({
   id: z.string().uuid(),
   prompt: z.string(),
-  response_type: z.enum(["text", "choice", "photo"]),
+  response_type: z.enum(["text", "choice", "photo", "live"]),
   options: z.array(z.string()).nullable(),
   status: z.enum(["open", "closing", "closed"]),
   responses_count: z.number().int().nonnegative(),

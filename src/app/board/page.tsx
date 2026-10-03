@@ -6,6 +6,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { createClient, type RealtimeChannel } from '@supabase/supabase-js';
 import type { TaskView } from '@/lib/delegate/types';
+import LiveView from '@/components/delegate/live-view';
 
 type Row = { answer: string; name: string; status: 'pending' | 'accepted' | 'rejected'; reason: string | null; photo?: string | null; created_at: string };
 
@@ -69,7 +70,7 @@ export default function BoardPage() {
   // Presenter control: end the task now with whatever is verified.
   // The agent's MCP tool sees status=closed on its next poll and continues.
   const closeNow = useCallback(async () => {
-    if (!task || task.status !== 'open' || closing) return;
+    if (!task || task.status !== 'open' || task.response_type === 'live' || closing) return;
     setClosing(true);
     try { await fetch(`/api/tasks/${task.id}/close`, { method: 'POST' }); } catch {}
     setClosing(false);
@@ -81,6 +82,8 @@ export default function BoardPage() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [closeNow]);
+
+  if (task?.response_type === 'live') return <LiveView taskId={task.id} />;
 
   return (
     <main className="min-h-svh bg-neutral-950 text-stone-100">

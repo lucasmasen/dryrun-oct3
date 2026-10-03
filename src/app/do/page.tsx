@@ -8,8 +8,8 @@ import type { TaskView } from '@/lib/delegate/types';
 const NEEDED = 3; // the MCP tool closes after 3 verified humans
 const FRESH_MS = 15 * 60 * 1000; // hide stale test tasks
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
-const minutes = (t: TaskView) => (t.response_type === 'choice' ? '~10 sec' : t.response_type === 'photo' ? '~2 min' : '~30 sec');
-const perHuman = (t: TaskView) => Math.floor(t.budget_cents / NEEDED);
+const minutes = (t: TaskView) => (t.response_type === 'live' ? '~5 min' : t.response_type === 'choice' ? '~10 sec' : t.response_type === 'photo' ? '~2 min' : '~30 sec');
+const perHuman = (t: TaskView) => (t.response_type === 'live' ? t.budget_cents : Math.floor(t.budget_cents / NEEDED));
 
 type Answered = Record<string, number>; // taskId -> cents
 
@@ -125,14 +125,14 @@ export default function DoPage() {
                 <li key={t.id}>
                   <button
                     disabled={done}
-                    onClick={() => { setOpenId(t.id); setError(null); setPhoto(null); }}
+                    onClick={() => { if (t.response_type === 'live') { location.href = `/live/${t.id}/go`; return; } setOpenId(t.id); setError(null); setPhoto(null); }}
                     className="w-full rounded-2xl border border-neutral-800 bg-neutral-900 p-5 text-left hover:bg-neutral-800 active:scale-[0.98] disabled:opacity-50"
                   >
                     <p className="line-clamp-2 text-lg font-semibold leading-snug">{t.prompt}</p>
                     <div className="mt-2 flex gap-3 text-sm">
                       <span className="font-semibold text-emerald-400">{money(perHuman(t))}</span>
                       <span className="text-neutral-400">{minutes(t)}</span>
-                      <span className="text-neutral-500">{t.response_type === 'choice' ? 'Pick one' : t.response_type === 'photo' ? '📷 Photo proof' : 'Short answer'}</span>
+                      <span className="text-neutral-500">{t.response_type === 'live' ? '📹 Live video · 1 human' : t.response_type === 'choice' ? 'Pick one' : t.response_type === 'photo' ? '📷 Photo proof' : 'Short answer'}</span>
                       {done && <span className="ml-auto text-emerald-400">✓ Done</span>}
                     </div>
                     <Bar value={n} max={NEEDED} tone="bg-sky-400" />

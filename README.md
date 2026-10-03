@@ -87,3 +87,16 @@ more features is the easy part.
 
 Commit every working state and branch per idea. When an idea dies at 1pm you want to be back
 to something that runs in three seconds.
+
+## Human inference frontend
+
+- `/t/<task-id>`: anonymous text or choice fulfillment. Sends only the answer through the existing API; photo responses are unsupported.
+- `/board/<task-id>`: read-only agent workspace showing actual task status, all submissions, screening outcomes, and the backend result. The host still creates and closes tasks.
+- `/board/demo`: enter a request to start an explicitly labeled deterministic pitch-hook simulation on the same canvas. Open `/t/demo` in another tab on the same browser/origin to add one response. Append `?type=text` to both routes for the text fixture.
+- Replay resets the local demo. Demo state uses versioned localStorage, so it is not cross-device synchronization and never calls the backend or a planner.
+
+Real results show reported payout only. A recorded Stripe PaymentIntent does not prove settlement; the workspace never claims capture, refund, or host-agent acknowledgment.
+
+Orb, arrival-beam, and decorative signal-merge effects respect reduced motion and visibility. Submit/result silver framing uses native static styling: MetalFx was removed after WebKit runtime testing showed hidden controls.
+
+Run `node scripts/frontend-check.mjs`, `npm run lint`, `npm run build`, and `npx tsc --noEmit` for frontend checks. Existing teammate `/do` and `/board` routes remain unchanged.

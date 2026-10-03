@@ -12,7 +12,8 @@
 // same anon key (read-only, from /api/realtime). Broadcast needs no table access.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-const ICE: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
+// Replaced by /api/realtime's list (adds a TURN relay when configured).
+let ICE: RTCIceServer[] = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
 
 export type LiveState = 'connecting' | 'waiting' | 'live' | 'reconnecting' | 'ended' | 'error';
 
@@ -26,8 +27,9 @@ let client: Promise<SupabaseClient> | null = null;
 function supabase(): Promise<SupabaseClient> {
   client ??= fetch('/api/realtime', { cache: 'no-store' })
     .then(r => r.json())
-    .then(({ url, anonKey }) => {
+    .then(({ url, anonKey, iceServers }) => {
       if (!url || !anonKey) throw new Error('Realtime is not configured');
+      if (Array.isArray(iceServers) && iceServers.length) ICE = iceServers;
       return createClient(String(url).replace(/\/rest\/v1\/?$/, ''), anonKey, {
         auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
       });

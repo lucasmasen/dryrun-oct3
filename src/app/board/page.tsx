@@ -15,6 +15,8 @@ export default function BoardPage() {
   const [task, setTask] = useState<TaskView | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [origin, setOrigin] = useState('');
+  const [closing, setClosing] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
   const refresh = useCallback(async () => {
     try {
@@ -35,7 +37,7 @@ export default function BoardPage() {
   useEffect(() => {
     setOrigin(location.origin);
     refresh();
-    const iv = setInterval(refresh, 1500);
+    const iv = setInterval(() => { refresh(); setNow(Date.now()); }, 1000);
     let channel: RealtimeChannel | undefined;
     fetch('/api/realtime').then(r => r.json()).then(({ url, anonKey }) => {
       if (!url || !anonKey) return;
@@ -62,6 +64,23 @@ export default function BoardPage() {
   const leader = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
 
   const open = task?.status === 'open';
+  const elapsed = task ? Math.max(0, Math.floor((now - new Date(task.created_at).getTime()) / 1000)) : 0;
+
+  // Presenter control: end the task now with whatever is verified.
+  // The agent's MCP tool sees status=closed on its next poll and continues.
+  const closeNow = useCallback(async () => {
+    if (!task || task.status !== 'open' || closing) return;
+    setClosing(true);
+    try { await fetch(`/api/tasks/${task.id}/close`, { method: 'POST' }); } catch {}
+    setClosing(false);
+    refresh();
+  }, [task, closing, refresh]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'c' || e.key === 'C') closeNow(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [closeNow]);
 
   return (
     <main className="min-h-svh bg-neutral-950 text-stone-100">
@@ -78,6 +97,21 @@ export default function BoardPage() {
             <span className="rounded-full bg-amber-500/15 px-3 py-1 font-semibold text-amber-300">
               {result ? `${money(result.paid.total_cents)} paid out` : `${money(task.budget_cents)} in escrow`}
             </span>
+            {open && (
+              <>
+                <span className="font-mono tabular-nums text-neutral-400">
+                  {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+                </span>
+                <button
+                  onClick={closeNow}
+                  disabled={closing || accepted.length === 0}
+                  title="Close now and return verified answers to the agent (keyboard: C)"
+                  className="rounded-full bg-white px-4 py-1 font-semibold text-black hover:bg-neutral-200 disabled:opacity-40"
+                >
+                  {closing ? 'Closing…' : `Close & return ${accepted.length} to agent`}
+                </button>
+              </>
+            )}
           </div>
         )}
       </header>

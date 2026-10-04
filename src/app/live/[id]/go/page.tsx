@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import type { LiveView } from '@/lib/delegate/types';
-import { startStreamer, type LiveState } from '@/lib/frontend/delegate/live-rtc';
+import { startStreamer, warmUp, type LiveState } from '@/lib/frontend/delegate/live-rtc';
 
 const money = (c: number) => `$${(c / 100).toFixed(2)}`;
 
@@ -49,6 +49,7 @@ export default function GoLivePage() {
   }, [id, stopAll]);
 
   useEffect(() => {
+    warmUp(); // fetch realtime + TURN config now, so "Go live" connects faster
     // localStorage is client-only: read it after mount (async, so no render cascade)
     void Promise.resolve().then(() => {
       setName(load('name', ''));

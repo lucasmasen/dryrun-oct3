@@ -1,15 +1,16 @@
 'use client';
-// Phone camera -> viewer, peer to peer over WebRTC.
-// Signaling (the SDP handshake) rides on a Supabase Realtime broadcast channel
-// `live:<taskId>`, so there's no extra server. ICE is gathered fully before
-// sending (no trickle) to keep the protocol to three messages:
-//   viewer  -> 'viewer-ready'  (repeated every 2s until it has a connection)
-//   phone   -> 'offer'         (for that viewer)
-//   viewer  -> 'answer'
-// A viewer reload or a dropped connection just restarts the handshake.
+// Phone camera -> viewer, peer to peer over WebRTC (TURN relay when configured).
+// Signaling rides on a Supabase Realtime broadcast channel `live:<taskId>`.
 //
-// Browser Supabase client: the board already uses one for realtime; this is the
-// same anon key (read-only, from /api/realtime). Broadcast needs no table access.
+// Fast path (trickle ICE): offer/answer are sent immediately and network
+// candidates follow one by one as they're found, so video starts as soon as the
+// first working route is known instead of after a fixed gathering wait.
+//   viewer   -> 'viewer-ready'   (on join, every 1s while unconnected, and on 'streamer-ready')
+//   streamer -> 'streamer-ready' (on join, so a waiting viewer answers instantly)
+//   streamer -> 'offer'          (for that viewer)
+//   viewer   -> 'answer'
+//   both     -> 'ice'            (candidates, tagged with the session)
+// A viewer reload or a dropped connection just restarts the handshake.
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 // STUN by default; /api/realtime adds a TURN relay when one is configured.
@@ -19,8 +20,10 @@ export type LiveState = 'connecting' | 'waiting' | 'live' | 'reconnecting' | 'en
 
 type Signal =
   | { kind: 'viewer-ready'; viewer: string }
+  | { kind: 'streamer-ready' }
   | { kind: 'offer'; viewer: string; session: string; sdp: RTCSessionDescriptionInit }
   | { kind: 'answer'; viewer: string; session: string; sdp: RTCSessionDescriptionInit }
+  | { kind: 'ice'; from: 'viewer' | 'streamer'; session: string; candidate: RTCIceCandidateInit }
   | { kind: 'bye' };
 
 let client: Promise<SupabaseClient> | null = null;
@@ -36,6 +39,11 @@ function supabase(): Promise<SupabaseClient> {
     })
     .catch(e => { client = null; throw e; });
   return client;
+}
+
+/** Call on page load: fetches config + TURN credentials early so "Go live" connects faster. */
+export function warmUp() {
+  supabase().catch(() => {});
 }
 
 async function channel(taskId: string, onSignal: (s: Signal) => void) {
@@ -55,36 +63,54 @@ async function channel(taskId: string, onSignal: (s: Signal) => void) {
   };
 }
 
-function gathered(pc: RTCPeerConnection, ms = 5000) {
-  if (pc.iceGatheringState === 'complete') return Promise.resolve();
-  return new Promise<void>(resolve => {
-    const t = setTimeout(resolve, ms);
-    pc.addEventListener('icegatheringstatechange', () => {
-      if (pc.iceGatheringState === 'complete') { clearTimeout(t); resolve(); }
-    });
-  });
-}
-
 const dead = (pc: RTCPeerConnection | null) =>
   !pc || ['failed', 'closed', 'disconnected'].includes(pc.connectionState);
 
-/** Viewer (requester / big screen). Returns a stop function. */
+/** Remote candidates can arrive before the description they belong to: buffer them. */
+function candidateQueue() {
+  const pending = new Map<string, RTCIceCandidateInit[]>();
+  return {
+    add(pc: RTCPeerConnection | null, session: string, current: string, c: RTCIceCandidateInit) {
+      if (pc && session === current && pc.remoteDescription) {
+        pc.addIceCandidate(c).catch(() => {});
+      } else {
+        pending.set(session, [...(pending.get(session) ?? []), c]);
+      }
+    },
+    flush(pc: RTCPeerConnection, session: string) {
+      for (const c of pending.get(session) ?? []) pc.addIceCandidate(c).catch(() => {});
+      pending.delete(session);
+    },
+  };
+}
+
+/** Viewer (requester / big screen). Safe to start before anyone is picked. Returns a stop function. */
 export async function startViewer(taskId: string, video: HTMLVideoElement, onState: (s: LiveState) => void) {
   const viewer = crypto.randomUUID();
   let pc: RTCPeerConnection | null = null;
+  let session = '';
+  const queue = candidateQueue();
   onState('connecting');
 
   const ch = await channel(taskId, async s => {
     if (s.kind === 'bye') { onState('ended'); return; }
+    if (s.kind === 'streamer-ready') { setTimeout(ping, 0); return; }
+    if (s.kind === 'ice') { if (s.from === 'streamer') queue.add(pc, s.session, session, s.candidate); return; }
     if (s.kind !== 'offer' || s.viewer !== viewer) return;
+
     pc?.close();
     const mine = new RTCPeerConnection({ iceServers: ICE });
     pc = mine;
+    session = s.session;
+    const mySession = s.session;
     mine.ontrack = e => {
       if (video.srcObject !== e.streams[0]) {
         video.srcObject = e.streams[0];
         video.play().catch(() => {});
       }
+    };
+    mine.onicecandidate = e => {
+      if (e.candidate && pc === mine) ch.send({ kind: 'ice', from: 'viewer', session: mySession, candidate: e.candidate.toJSON() });
     };
     mine.onconnectionstatechange = () => {
       if (pc !== mine) return;
@@ -93,18 +119,18 @@ export async function startViewer(taskId: string, video: HTMLVideoElement, onSta
     };
     try {
       await mine.setRemoteDescription(s.sdp);
+      queue.flush(mine, mySession);
       await mine.setLocalDescription(await mine.createAnswer());
-      await gathered(mine);
-      if (pc === mine) ch.send({ kind: 'answer', viewer, session: s.session, sdp: mine.localDescription!.toJSON() });
+      if (pc === mine) ch.send({ kind: 'answer', viewer, session: mySession, sdp: mine.localDescription!.toJSON() });
     } catch {
       onState('reconnecting');
     }
   });
 
+  function ping() { if (dead(pc)) ch.send({ kind: 'viewer-ready', viewer }); }
   onState('waiting');
-  const ping = () => { if (dead(pc)) ch.send({ kind: 'viewer-ready', viewer }); };
   ping();
-  const iv = setInterval(ping, 2000);
+  const iv = setInterval(ping, 1000);
   return () => { clearInterval(iv); pc?.close(); ch.close(); };
 }
 
@@ -113,13 +139,14 @@ export async function startStreamer(taskId: string, stream: MediaStream, onState
   let pc: RTCPeerConnection | null = null;
   let session = '';
   let last = { viewer: '', at: 0 };
+  const queue = candidateQueue();
   onState('connecting');
 
   const ch = await channel(taskId, async s => {
     if (s.kind === 'viewer-ready') {
       const st = pc?.connectionState;
-      if (st === 'connected' || st === 'connecting') return;           // already serving a viewer
-      if (last.viewer === s.viewer && Date.now() - last.at < 15000) return; // handshake in flight (two 5s ICE gathers)
+      if (st === 'connected' || st === 'connecting') return;               // already serving a viewer
+      if (last.viewer === s.viewer && Date.now() - last.at < 6000) return; // handshake in flight
       last = { viewer: s.viewer, at: Date.now() };
       pc?.close();
       const mine = new RTCPeerConnection({ iceServers: ICE });
@@ -127,21 +154,29 @@ export async function startStreamer(taskId: string, stream: MediaStream, onState
       session = crypto.randomUUID();
       const mySession = session;
       stream.getTracks().forEach(t => mine.addTrack(t, stream));
+      mine.onicecandidate = e => {
+        if (e.candidate && pc === mine) ch.send({ kind: 'ice', from: 'streamer', session: mySession, candidate: e.candidate.toJSON() });
+      };
       mine.onconnectionstatechange = () => {
         if (pc !== mine) return;
         if (mine.connectionState === 'connected') onState('live');
         else if (dead(mine)) onState('reconnecting');
       };
       await mine.setLocalDescription(await mine.createOffer());
-      await gathered(mine);
-      if (pc === mine && session === mySession) {
-        ch.send({ kind: 'offer', viewer: s.viewer, session: mySession, sdp: mine.localDescription!.toJSON() });
-      }
+      if (pc === mine) ch.send({ kind: 'offer', viewer: s.viewer, session: mySession, sdp: mine.localDescription!.toJSON() });
     } else if (s.kind === 'answer' && pc && s.session === session) {
-      await pc.setRemoteDescription(s.sdp).catch(() => onState('reconnecting'));
+      try {
+        await pc.setRemoteDescription(s.sdp);
+        queue.flush(pc, session);
+      } catch {
+        onState('reconnecting');
+      }
+    } else if (s.kind === 'ice' && s.from === 'viewer') {
+      queue.add(pc, s.session, session, s.candidate);
     }
   });
 
   onState('waiting');
+  ch.send({ kind: 'streamer-ready' }); // a viewer already listening replies right away
   return () => { ch.send({ kind: 'bye' }); pc?.close(); ch.close(); };
 }

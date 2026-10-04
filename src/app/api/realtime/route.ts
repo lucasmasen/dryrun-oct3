@@ -26,16 +26,26 @@ async function iceServers(): Promise<RTCIceServer[]> {
     });
   }
   const credsUrl = process.env.TURN_CREDENTIALS_URL;
-  if (credsUrl) {
-    try {
-      const r = await fetch(credsUrl, { cache: 'no-store', signal: AbortSignal.timeout(4000) });
-      const list = await r.json();
-      if (Array.isArray(list)) out.push(...(list as RTCIceServer[]));
-    } catch (e) {
-      console.error('TURN credentials fetch failed', e);
-    }
-  }
+  if (credsUrl) out.push(...(await turnFromProvider(credsUrl)));
   return out;
+}
+
+// Provider TURN credentials, cached per server instance so page loads don't wait on the provider
+let turnCache: { at: number; list: RTCIceServer[] } | null = null;
+const TURN_TTL_MS = 10 * 60 * 1000;
+async function turnFromProvider(credsUrl: string): Promise<RTCIceServer[]> {
+  if (turnCache && Date.now() - turnCache.at < TURN_TTL_MS) return turnCache.list;
+  try {
+    const r = await fetch(credsUrl, { cache: 'no-store', signal: AbortSignal.timeout(4000) });
+    const list = await r.json();
+    if (Array.isArray(list)) {
+      turnCache = { at: Date.now(), list: list as RTCIceServer[] };
+      return turnCache.list;
+    }
+  } catch (e) {
+    console.error('TURN credentials fetch failed', e);
+  }
+  return turnCache?.list ?? []; // stale beats nothing
 }
 
 export async function GET() {

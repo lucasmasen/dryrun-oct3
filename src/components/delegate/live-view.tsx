@@ -33,19 +33,21 @@ export default function LiveView({ taskId }: { taskId: string }) {
     return () => { clearTimeout(first); clearInterval(iv); };
   }, [refresh]);
 
-  const pickedId = info?.assigned?.claim_id ?? null;
   const closed = info?.status === 'closed';
 
-  // Connect to the picked phone once someone is assigned
+  const loaded = info !== null;
+
+  // Start listening as soon as the page loads (not only after a pick), so the
+  // phone connects the moment it taps "Go live"
   useEffect(() => {
-    if (!pickedId || closed || !video.current) return;
+    if (!loaded || closed || !video.current) return;
     let stop: (() => void) | undefined;
     let cancelled = false;
     startViewer(taskId, video.current, setRtc)
       .then(s => (cancelled ? s() : (stop = s)))
       .catch(() => setRtc('error'));
     return () => { cancelled = true; stop?.(); };
-  }, [taskId, pickedId, closed]);
+  }, [taskId, loaded, closed]);
 
   const act = async (path: string, body?: object) => {
     setBusy(true);
